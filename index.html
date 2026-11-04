@@ -202,7 +202,7 @@ ul.plain b{color:var(--ink);font-weight:600}
   <section>
     <div class="shead">
       <h2 id="h-yr">연도별 수익률</h2>
-      <div class="legend"><span><i style="background:var(--s1)"></i>v2</span><span><i style="background:var(--s3)"></i>1차안</span><span><i style="background:var(--s2)"></i>단순보유</span></div>
+      <div class="legend"><span><i style="background:var(--s1)"></i>v2</span><span><i style="background:var(--s2)"></i>단순보유</span></div>
     </div>
     <div class="chart" id="c-yr"></div>
   </section>
@@ -210,7 +210,8 @@ ul.plain b{color:var(--ink);font-weight:600}
   <div class="two">
     <section>
       <h2 id="h-tyr">연도별 표</h2>
-      <div class="tw"><table><thead><tr><th id="th-yr">연도</th><th>v2</th><th>1차안</th><th>단순보유</th></tr></thead><tbody id="t-yr"></tbody></table></div>
+      <div class="tw"><table><thead><tr><th id="th-yr">연도</th><th>v2</th><th>v2 MDD</th><th>단순보유</th><th>단순보유 MDD</th></tr></thead><tbody id="t-yr"></tbody></table></div>
+      <p class="note" id="yr-note">MDD는 그 해 안에서 전고점 대비 가장 크게 떨어진 폭입니다. 전고점은 직전 해 마지막 평가액부터 셉니다.</p>
     </section>
     <section>
       <h2>손실이 컸던 사이클</h2>
@@ -337,6 +338,13 @@ function cstats(R){
     hold:n?c.reduce((a,x)=>a+x.days,0)/n:0,holdmax:n?Math.max(...c.map(x=>x.days)):0,
     expo:Math.round(R.inv.reduce((a,x)=>a+x,0)/R.inv.length*100),divs};
 }
+// drawdown inside each bucket, measured from the previous bucket's close
+function groupMdd(e,d,keyLen){
+  const out={};let pk=e[0],m=0;
+  for(let i=0;i<e.length;i++){const k=d[i].slice(0,keyLen);pk=Math.max(pk,e[i]);m=Math.min(m,e[i]/pk-1);
+    if(i+1===e.length||d[i+1].slice(0,keyLen)!==k){out[k]=m*100;pk=e[i];m=0}}
+  return out;
+}
 function groupRet(e,d,keyLen){
   const out={};let prev=e[0];
   for(let i=0;i<e.length;i++){const k=d[i].slice(0,keyLen);if(i+1===e.length||d[i+1].slice(0,keyLen)!==k){out[k]=(e[i]/prev-1)*100;prev=e[i]}}
@@ -368,7 +376,7 @@ function view(){
   const partial={}, ks=k=>k.slice(0,kl), first=ks(d[0]), last=ks(d[d.length-1]);
   if(i0>0?ks(D.d[i0-1])===first:(!short&&d[0].slice(5)>'01-10'))partial[first]=kdate(d[0].slice(5))+'부터';
   if(i1===D.d.length-1)partial[last]=(partial[last]?partial[last]+' ':'')+kdate(d[d.length-1].slice(5))+'까지';
-  V={start:d[0],end:d[d.length-1],short,partial,strat:s,base:s1,bh:pstats(b,d),ys:groupRet(R.e,d,kl),y1:groupRet(R1.e,d,kl),yb:groupRet(b,d,kl),
+  V={start:d[0],end:d[d.length-1],short,partial,strat:s,base:s1,bh:pstats(b,d),ys:groupRet(R.e,d,kl),yb:groupRet(b,d,kl),ms:groupMdd(R.e,d,kl),mb:groupMdd(b,d,kl),
     worst:R.cyc.slice().sort((a,b)=>a.eq-b.eq).slice(0,5),d,e:R.e,e1:R1.e,b};
   syncRange(D);
   return V;
@@ -388,6 +396,7 @@ function syncRange(D){
   $('h-yr').textContent=V.short?'월별 수익률':'연도별 수익률';
   $('h-tyr').textContent=V.short?'월별 표':'연도별 표';
   $('th-yr').textContent=V.short?'월':'연도';
+  $('yr-note').textContent=`MDD는 그 ${V.short?'달':'해'} 안에서 전고점 대비 가장 크게 떨어진 폭입니다. 전고점은 직전 ${V.short?'달':'해'} 마지막 평가액부터 셉니다.`;
 }
 function setRange(r){rng=r;try{localStorage.setItem('locv2-range',r)}catch(e){}render()}
 document.querySelectorAll('#rng button').forEach(b=>b.addEventListener('click',()=>setRange(b.dataset.r)));
@@ -490,7 +499,7 @@ function drawTS(D){
 function drawYears(D){
   const host=$('c-yr');host.innerHTML='';
   const yrs=Object.keys(D.ys), H=narrow()?220:280, PADT=12, PADB=26, iw=W-PADL-PADR, ih=H-PADT-PADB;
-  const sets=[D.ys,D.y1,D.yb];
+  const sets=[D.ys,D.yb], cols=['var(--s1)','var(--s2)'], names=['v2','단순보유'];
   const vals=yrs.flatMap(y=>sets.map(s=>s[y]));
   const base=D.short?10:100, hiV=Math.max(base,...vals), loV=Math.min(-base,...vals);
   const step=niceStep((hiV-loV)/(narrow()?4:6)), vmax=Math.ceil(hiV/step)*step, vmin=Math.floor(loV/step)*step;
@@ -498,7 +507,7 @@ function drawYears(D){
   const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img'},host);
   const tip=document.createElement('div');tip.className='tip';tip.hidden=true;host.appendChild(tip);
   for(let v=Math.ceil(vmin/step)*step;v<=vmax;v+=step){const yy=y(v);el('line',{x1:PADL,x2:W-PADR,y1:yy,y2:yy,stroke:v===0?'var(--axis)':'var(--grid)'},svg);const t=el('text',{x:PADL-8,y:yy+4,'text-anchor':'end'},svg);t.textContent=(v>0?'+':'')+v+'%'}
-  const band=iw/yrs.length, bw=Math.max(1,Math.min(12,(band-6)/3));
+  const band=iw/yrs.length, bw=Math.max(1,Math.min(14,(band-6)/2));
   const bar=(x0,v,color,g)=>{const y0=y(0),y1=y(v),h=Math.abs(y1-y0),top=Math.min(y0,y1),r=Math.min(4,h,bw/2);
     // rounded at data end, square at baseline
     let d; if(v>=0)d=`M${x0},${y0}V${top+r}Q${x0},${top} ${x0+r},${top}H${x0+bw-r}Q${x0+bw},${top} ${x0+bw},${top+r}V${y0}Z`;
@@ -507,12 +516,12 @@ function drawYears(D){
   const lab=Math.ceil(28/band);
   yrs.forEach((yr,k)=>{
     const cx=PADL+band*k+band/2, g=el('g',{},svg);
-    sets.forEach((s,j)=>bar(cx-1.5*bw-1+j*(bw+1),s[yr],SER[j][1],g));
+    sets.forEach((s,j)=>bar(cx-bw-1+j*(bw+2),s[yr],cols[j],g));
     if(k%lab===0){const t=el('text',{x:cx,y:H-8,'text-anchor':'middle'},svg);t.textContent=D.short?(+yr.slice(5))+'월':"'"+yr.slice(2)}
     const hit=el('rect',{x:PADL+band*k,y:0,width:band,height:H,fill:'transparent'},svg);
     hit.addEventListener('pointerenter',()=>{
       g.setAttribute('opacity','1');svg.querySelectorAll('g').forEach(o=>{if(o!==g)o.setAttribute('opacity','.45')});
-      tip.innerHTML=`<div class="d">${kdate(yr)}${D.partial[yr]?' ('+D.partial[yr]+')':''}</div>`+tipList(sets.map(s=>pct(s[yr])));
+      tip.innerHTML=`<div class="d">${kdate(yr)}${D.partial[yr]?' ('+D.partial[yr]+')':''}</div>`+sets.map((s,j)=>`<div class="r"><span><i style="background:${cols[j]}"></i>${names[j]}</span><span class="num">${pct(s[yr])}</span></div>`).join('');
       tip.hidden=false;const b=svg.getBoundingClientRect(),px=cx/W*b.width,tw=tip.offsetWidth;let left=px+12;if(left+tw>b.width-4)left=px-tw-12;tip.style.left=Math.max(4,left)+'px';tip.style.top='10px';
     });
     hit.addEventListener('pointerleave',()=>{svg.querySelectorAll('g').forEach(o=>o.setAttribute('opacity','1'));tip.hidden=true});
@@ -521,8 +530,8 @@ function drawYears(D){
 
 function tables(D){
   const cls=v=>v>0?'pos':v<0?'neg':'';
-  $('t-yr').innerHTML=Object.keys(D.ys).map(y=>{const a=D.ys[y],o=D.y1[y],b=D.yb[y];return `<tr><td class="num">${kdate(y)}${D.partial[y]?'*':''}</td><td class="num ${cls(a)}">${pct(a)}</td><td class="num ${cls(o)}">${pct(o)}</td><td class="num ${cls(b)}">${pct(b)}</td></tr>`}).join('')
-    +(Object.keys(D.partial).length?`<tr><td colspan="4" class="note" style="text-align:left">* 일부 기간: ${Object.entries(D.partial).map(([k,v])=>kdate(k)+' '+v).join(', ')}</td></tr>`:'');
+  $('t-yr').innerHTML=Object.keys(D.ys).map(y=>{const a=D.ys[y],b=D.yb[y];return `<tr><td class="num">${kdate(y)}${D.partial[y]?'*':''}</td><td class="num ${cls(a)}">${pct(a)}</td><td class="num">${pct(D.ms[y])}</td><td class="num ${cls(b)}">${pct(b)}</td><td class="num">${pct(D.mb[y])}</td></tr>`}).join('')
+    +(Object.keys(D.partial).length?`<tr><td colspan="5" class="note" style="text-align:left">* 일부 기간: ${Object.entries(D.partial).map(([k,v])=>kdate(k)+' '+v).join(', ')}</td></tr>`:'');
   $('t-worst').innerHTML=D.worst.length?D.worst.map(w=>`<tr><td class="num">${kdate(w.s)}</td><td class="num">${kdate(w.e)}</td><td class="num">${w.div}</td><td class="num">${w.t}</td><td class="num ${cls(w.eq)}">${pct(w.eq*100)}</td></tr>`).join(''):'<tr><td colspan="5" class="note" style="text-align:left">이 기간에 끝난 사이클이 없습니다</td></tr>';
 }
 
