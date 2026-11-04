@@ -1,0 +1,37 @@
+name: Update prices
+
+on:
+  schedule:
+    # 장 마감(16:00 ET = 20:00 UTC 서머타임 / 21:00 UTC 겨울) 직후부터 30분 간격 8회.
+    # GitHub 스케줄은 정각·30분에 몰려 수 시간씩 밀리므로 7분/37분처럼 어긋난 시각을 쓴다.
+    # 장중에 돌면 스크립트가 당일 봉을 버리므로 겨울철 20시대 실행도 안전하다.
+    - cron: "7,37 20-23 * * 1-5"
+    # 보조 실행: 한국 10:17 / 13:17 / 16:17 — 프리장(한국 17:00 서머타임 / 18:00 겨울) 전에 한 번 더 확인
+    - cron: "17 1,4,7 * * 2-6"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yfinance
+      - run: python scripts/update_prices.py
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- prices.json; then echo "no change"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add prices.json
+          git commit -m "Update prices"
+          git push
