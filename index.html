@@ -139,6 +139,14 @@ ul.plain b{color:var(--ink);font-weight:600}
 .theme .sun{display:none}
 :root[data-theme="dark"] .theme .sun{display:block} :root[data-theme="dark"] .theme .moon{display:none}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .theme .sun{display:block} :root:not([data-theme="light"]) .theme .moon{display:none}}
+/* current status (latest close) */
+.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--grid);border:1px solid var(--hair);border-radius:14px;overflow:hidden}
+.now div{background:var(--surface);padding:14px 18px;display:grid;gap:2px;align-content:start;min-width:0}
+.now .lab{font-size:13px;color:var(--muted)}
+.now .v{font-size:20px;font-weight:700;letter-spacing:-.2px;font-variant-numeric:tabular-nums}
+.now .s{font-size:13px;color:var(--muted)}
+.now .s b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.now .on{color:var(--bad)}
 </style>
 </head>
 <body>
@@ -161,6 +169,11 @@ ul.plain b{color:var(--ink);font-weight:600}
     <div class="rules" id="rules"></div>
     <p class="period" id="period"></p>
   </header>
+
+  <section>
+    <div class="shead"><h2>현재 상태</h2><p class="note" id="now-note"></p></div>
+    <div class="now" id="now"></div>
+  </section>
 
   <div class="range">
     <div class="seg" role="group" aria-label="기간 선택" id="rng">
@@ -295,7 +308,7 @@ function run(C,dates,i0,i1,rule,qneg,r3){
     let q=0;for(const l of lots)q+=l;
     const pos=q*p;e.push(cash+pos);inv.push(pos/(cash+pos));
   }
-  return {e,inv,cyc};
+  return {e,inv,cyc,open:lots.length?{div,tiers:lots.length,start:dates[cycStart],tier}:null,lastLoss};
 }
 /* ENGINE END */
 
@@ -363,7 +376,7 @@ function bounds(D,r){
 let rng='all';
 try{const s=localStorage.getItem('locv2-range');if(s)rng=s}catch(e){}
 {const m=location.hash.match(/r=(all|ytd|10|5|3|y\d{4}|c\d{4}-\d\d-\d\d_\d{4}-\d\d-\d\d)/);if(m)rng=m[1]}
-let V=null, UPDATED='';
+let V=null, UPDATED='', LIVEQ=null;
 function view(){
   const D=DATA[cur],X=derived(cur);
   if(/^y\d{4}$/.test(rng)&&!D.d.some(x=>x.startsWith(rng.slice(1))))rng='all';
@@ -552,8 +565,22 @@ function header(){
   ].filter(Boolean).map(t=>`<li>${t}</li>`).join('');
 }
 
+function renderNow(){
+  const D=DATA[cur],X=derived(cur),Q=DATA.QQQ,n=D.c.length,R=run(D.c,D.d,0,n-1,RULES[cur],X.qneg,X.r3),rule=RULES[cur],cells=[];
+  const L=LIVEQ&&LIVEQ.length>252?LIVEQ:Q.d.map((d,k)=>[d,Q.c[k]]), qi=L.length-1, qr=L[qi][1]/L[qi-252][1]-1, neg=qr<0;
+  const nextDiv=rule.qqq20&&neg?20:rule.loss10&&R.lastLoss?10:5, why=rule.qqq20&&neg?'QQQ 12개월 마이너스':rule.loss10&&R.lastLoss?'직전 사이클 손실':'평상시';
+  const o=R.open;
+  cells.push(o?['v2 현재 사이클',`${o.div}분할 · ${o.tiers}/${o.div}티어`,`${kdate(o.start)} 시작 · 남은 티어 ${o.div-o.tiers}개`]
+    :['v2 현재 사이클','보유 없음',`다음 사이클은 <b>${nextDiv}분할</b>로 시작 · ${why}`]);
+  cells.push(['QQQ 12개월',`${pct(qr*100,2)} ${neg?'마이너스':'플러스'}`,`<b>${L[qi][1].toFixed(2)}</b> (${kdate(L[qi][0])}) vs 1년 전 <b>${L[qi-252][1].toFixed(2)}</b> (${kdate(L[qi-252][0])}) · 배당 조정가<br>${neg?'새 사이클은 20분할':'마이너스가 되면 새 사이클 20분할'}`,neg]);
+  if(rule.loss10){const c=R.cyc[R.cyc.length-1];cells.push(['직전 사이클',c?(c.ret<0?'손실':'수익'):'–',c?`${kdate(c.s)} ~ ${kdate(c.e)} · ${pct(c.ret*100)}${o?' · 지금 사이클이 손실로 끝나면 다음 10분할':c.ret<0?' → 다음 사이클 10분할':''}`:'',c&&c.ret<0&&!o])}
+  if(rule.rule3){const on=rule3State(D.c.concat([D.c[n-1]]))[n],ch=D.c.slice(n-4).slice(1).map((v,k)=>v>D.c[n-4+k]?'▲':v<D.c[n-4+k]?'▼':'–').join(' ');
+    cells.push(['3일 규칙',on?'켜짐':'꺼짐',`${on?'다음 거래일 추가 매수 중지 · ':''}최근 ${ch}`,on])}
+  $('now').innerHTML=cells.map(c=>`<div><span class="lab">${c[0]}</span><span class="v${c[3]?' on':''}">${c[1]}</span><span class="s">${c[2]}</span></div>`).join('');
+  $('now-note').textContent=`${kdate(D.d[n-1])} 종가 기준 · 전체 기간 백테스트를 이어온 상태`;
+}
 function render(){
-  const D=view();
+  const D=view();renderNow();
   document.querySelectorAll('.bar .seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.t===cur));
   header();tiles(D);tables(D);drawCharts();
 }
@@ -575,8 +602,8 @@ fetch('prices.json?ts='+Math.floor(Date.now()/6e5),{cache:'no-store'}).then(r=>{
     const k=o[1]/D.c[D.c.length-1];if(Math.abs(k-1)>1e-9){D.c=D.c.map(v=>v*k);added++}
     for(const [d,c] of P)if(d>last&&c>0){D.d.push(d);D.c.push(c);added++}
   }
-  UPDATED=j.updated||'';
-  if(added)render();else tiles(V);
+  UPDATED=j.updated||'';LIVEQ=(j.prices||{}).QQQ||null;
+  if(added)render();else{tiles(V);renderNow()}
 }).catch(()=>{});
 
 /* light/dark toggle: white by default (as in the design), dark only when the viewer picks it */
