@@ -1,11 +1,11 @@
-"""Fetch recent daily closes for SOXL/TQQQ/QQQ and merge them into prices.json.
+"""Fetch recent daily closes for SOXL/TQQQ/USD/QQQ and merge them into prices.json.
 
 Two sources, fetched per ticker so one failure never blocks the other:
   1. Yahoo  - chart API directly (query1, then query2), yfinance as a last resort.
               Covers 2y, so every kept close is re-adjusted for splits on each run.
   2. Google - Finance quote page, whose embedded daily bars cover the last month.
               Fills in any day Yahoo has not published yet, whichever is first.
-SOXL/TQQQ closes are split-adjusted but not dividend-adjusted, which matches the
+SOXL/TQQQ/USD closes are split-adjusted but not dividend-adjusted, which matches the
 prices LOC orders are actually placed at. QQQ only feeds the 12-month return filter,
 so it is stored dividend-adjusted like the backtest (Yahoo adjclose); a day Google
 fills in is the plain close, which Yahoo replaces with the adjusted one next run.
@@ -18,7 +18,7 @@ from datetime import datetime, time as dtime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-TICKERS = {"SOXL": "NYSEARCA", "TQQQ": "NASDAQ", "QQQ": "NASDAQ"}  # ticker -> Google exchange code
+TICKERS = {"SOXL": "NYSEARCA", "TQQQ": "NASDAQ", "USD": "NYSEARCA", "QQQ": "NASDAQ"}  # ticker -> Google exchange code
 ADJUSTED = {"QQQ"}  # stored dividend-adjusted
 KEEP = 400  # trading days kept per ticker; the QQQ 12-month filter needs 253
 OUT = Path(__file__).resolve().parent.parent / "prices.json"
